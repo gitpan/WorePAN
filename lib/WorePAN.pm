@@ -2,17 +2,21 @@ package WorePAN;
 
 use strict;
 use warnings;
-use CPAN::ParseDistribution;
+use Archive::Any::Lite;
+use File::Temp ();
+use Parse::PMFile;
 use Path::Extended::Dir;
 use Path::Extended::File;
 use LWP::Simple;
-use IO::Zlib;
 use JSON;
 use URI;
 use URI::QueryParam;
 use version;
+use CPAN::Version;
+use CPAN::Meta::YAML;
+use CPAN::DistnameInfo;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 sub new {
   my ($class, %args) = @_;
@@ -20,13 +24,17 @@ sub new {
   $args{verbose} ||= $ENV{TEST_VERBOSE};
 
   if (!$args{root}) {
-    require File::Temp;
     $args{root} = File::Temp::tempdir(CLEANUP => 1);
     warn "'root' is missing; created a temporary WorePAN directory: $args{root}\n" if $args{verbose};
   }
   $args{root} = Path::Extended::Dir->new($args{root})->mkdir;
   $args{cpan} ||= "http://www.cpan.org/";
+  if ($args{use_backpan}) {
+    $args{backpan} ||= "http://backpan.cpan.org/";
+  }
   $args{no_network} = 1 if !defined $args{no_network} && $ENV{HARNESS_ACTIVE};
+
+  $args{pid} = $$;
 
   my $self = bless \%args, $class;
 
@@ -158,8 +166,8 @@ sub __fetch {
     if (!is_error(mirror($url => $dest))) {
       return $dest;
     }
-    if ($self->{use_backpan}) {
-      my $url = "http://backpan.cpan.org/authors/id/$file";
+    if ($self->{backpan}) {
+      my $url = $self->{backpan}."authors/id/$file";
       $self->_log("mirror $url to $dest");
       if (!is_error(mirror($url => $dest))) {
         return $dest;
@@ -170,45 +178,105 @@ sub __fetch {
   return;
 }
 
-sub update_indices {
-  my $self = shift;
+sub walk {
+  my ($self, %args) = @_;
   my $root = $self->{root}->subdir('authors/id');
 
-  my (%authors, %packages);
+  local $Archive::Any::Lite::IGNORE_SYMLINK = 1;
   $root->recurse(callback => sub {
-    my $file = shift;
-    return if -d $file;
+    my $archive_file = shift;
+    return if -d $archive_file;
 
-    my $basename = $file->basename;
+    my $path = $archive_file->relative($root);
+    my $basename = $archive_file->basename;
     return unless $basename =~ /\.(?:tar\.(?:gz|bz2)|tgz|zip)$/;
+    return if $basename =~ /^perl\-\d+/; # perls
+    return if !$args{developer_releases} && (
+         $basename =~ /\d\.\d+_\d/  # dev release
+      or $basename =~ /TRIAL/       # trial release
+    );
 
-    my $path = $file->relative($root);
+    my $archive = Archive::Any::Lite->new($archive_file->path);
+    my $tmpdir = Path::Extended::Dir->new(File::Temp::tempdir(CLEANUP => 1));
+    $archive->extract($tmpdir);
+    my $basedir = $tmpdir->children == 1 ? ($tmpdir->children)[0] : $tmpdir;
+    $basedir = $tmpdir unless -d $basedir;
+
+    $args{callback}->($basedir, $path, $archive_file);
+  });
+}
+
+sub update_indices {
+  my $self = shift;
+
+  my (%authors, %packages);
+  $self->walk(callback => sub {
+    my ($basedir, $path, $archive_file) = @_;
+
+    my $mtime = $archive_file->mtime;
     my ($author) = $path =~ m{^[A-Z]/[A-Z][A-Z0-9_]/([^/]+)/};
     $authors{$author} = 1;
 
-    # tweaks for CPAN::ParseDistribution to warn less verbosely
-    local *CPAN::ParseDistribution::qv = \&version::qv;
-    local $SIG{__WARN__} = sub {
-      if ($_[0] =~ /^_parse_version_safely: \$VAR1 = ({.+};)\s*$/sm) {
-        my $err = eval $1;
-        if ($err && ref $err eq ref {}) {
-          warn "_parse_version_safely error ($err->{line}) at $err->{file}";
-          return;
+    # a dist that has blib/ shouldn't be indexed
+    # see PAUSE::dist::mail_summary
+    return if $basedir->basename eq 'blib' or $basedir->subdir('blib')->exists;
+
+    my ($metafile, @pmfiles);
+    $basedir->recurse(callback => sub {
+      my $file = shift;
+      push @pmfiles, $file if $file =~ /\.pm(?:\.PL)?$/i;
+      $metafile ||= $file if $file =~ /META.(?:yml|json)$/;
+    });
+
+    my $meta;
+    if ($metafile) {
+      my $content = do { local $/; open my $fh, '<:utf8', $metafile; <$fh> };
+      if ($metafile =~ /\.yml$/) {
+        $meta = eval { CPAN::Meta::YAML->read_string($content)->[0] };
+      } else {
+        $meta = eval { JSON::decode_json($content) };
+      }
+    }
+
+    # Provides field has precedence; should also check meta_ok
+    if ($self->_version_from_meta_ok($meta)) {
+      $self->_update_packages(\%packages, $meta->{provides}, $path, $mtime);
+      return;
+    }
+
+    my $parser = Parse::PMFile->new($meta);
+PMFILES:
+    for my $pmfile (@pmfiles) {
+      my $relpath = $pmfile->relative($basedir);
+
+      # adopted from PAUSE::dist::filter_pms
+      next if $relpath =~ m!^(?:x?t|inc|local|perl5)!;
+
+      if ($meta) {
+        my $no_index = $meta->{no_index} || $meta->{private};
+        if (ref $no_index eq 'HASH') {
+          my %map = (
+            file => qr{\z},
+            directory => qr{/},
+          );
+          for my $k (qw(file directory)) {
+            next unless my $v = $no_index->{$k};
+            my $rest = $map{$k};
+            if (ref $v eq 'ARRAY') {
+              for my $ve (@$v) {
+                $ve =~ s|/+$||;
+                next PMFILES if $relpath =~ /^$ve$rest/;
+              }
+            } else {
+              $v =~ s|/+$||;
+              next PMFILES if $relpath =~ /^$v$rest/;
+            }
+          }
         }
       }
-      warn @_;
-    };
-    my $dist = eval { CPAN::ParseDistribution->new($file->path, use_tar => $self->{tar}) } or return;
-    my $modules = $dist->modules;
-    for my $module (keys %$modules) {
-      if ($packages{$module}) {
-        if (eval { version->new($packages{$module}[0]) < version->new($modules->{$module}) }) {
-          $packages{$module} = [$modules->{$module}, $path];
-        }
-      }
-      else {
-        $packages{$module} = [$modules->{$module}, $path];
-      }
+
+      my $info = $parser->parse($pmfile);
+      $self->_update_packages(\%packages, $info, $path, $mtime);
     }
   });
   $self->_write_mailrc(\%authors);
@@ -217,14 +285,62 @@ sub update_indices {
   return 1;
 }
 
+# borrowed from PAUSE::dist
+sub _version_from_meta_ok {
+  my ($self, $meta) = @_;
+  return unless $meta && ref $meta eq ref {};
+
+  my $provides = $meta->{provides};
+  return unless $provides && ref $provides eq ref {} && %$provides;
+
+  my ($mb_v) = ($meta->{generated_by} || '') =~ /Module::Build version ([\d\.]+)/;
+  return 1 unless $mb_v;
+  return 1 if $mb_v eq '0.250.0';
+  return if $mb_v >= 0.19 && $mb_v < 0.26;
+  return 1;
+}
+
+sub _update_packages {
+  my ($self, $packages, $info, $path, $mtime) = @_;
+
+  for my $module (sort keys %$info) {
+    if (!$packages->{$module}) { # shortcut
+      $packages->{$module} = [$info->{$module}{version}, $path, $mtime];
+      next;
+    }
+    my $ok = 0;
+    my $new_version = $info->{$module}{version};
+    my $cur_version = $packages->{$module}[0];
+    if (CPAN::Version->vgt($new_version, $cur_version)) {
+      $ok++;
+    }
+    elsif (CPAN::Version->vgt($cur_version, $new_version)) {
+      # lower VERSION number
+    }
+    else {
+      if (
+        $new_version eq 'undef' or $new_version == 0 or
+        CPAN::Version->vcmp($new_version, $cur_version) == 0
+      ) {
+        if ($mtime >= $packages->{$module}[2]) {
+          $ok++; # dist is newer
+        }
+      }
+    }
+    if ($ok) {
+      $packages->{$module} = [$new_version, $path, $mtime];
+    }
+  }
+}
+
 sub _write_mailrc {
   my ($self, $authors) = @_;
 
   my $index = $self->mailrc;
   $index->parent->mkdir;
   my $fh = IO::Zlib->new($index->path, "wb") or die $!;
-  for (sort keys %$authors) {
-    $fh->printf("alias %s \"%s <%s\@cpan.org>\"\n", $_, $_, lc $_);
+  for my $id (sort keys %$authors) {
+    $fh->printf("alias %s \"%s <%s\@cpan.org>\"\n", $id, $id, lc $id);
   }
   $fh->close;
   $self->_log("created $index");
@@ -239,11 +355,17 @@ sub _write_packages_details {
   $fh->print("File: 02packages.details.txt\n");
   $fh->print("Last-Updated: ".localtime(time)."\n");
   $fh->print("\n");
-  for (sort keys %$packages) {
-    $fh->printf("%-40s %-7s %s\n",
-      $_,
-      (defined $packages->{$_}[0] ? $packages->{$_}[0] : 'undef'),
-      $packages->{$_}[1]
+  for my $pkg (map {$_->[1]} sort {($a->[0] cmp $b->[0]) || ($a->[1] cmp $b->[1])} map {[lc $_, $_]} keys %$packages) {
+    my ($first, $second) = (30, 8);
+    my $ver = defined $packages->{$pkg}[0] ? $packages->{$pkg}[0] : 'undef';
+    if (length($pkg) > $first) {
+      $second = length($ver);
+      $first += 8 - $second;
+    }
+    $fh->printf("%-${first}s %${second}s  %s\n",
+      $pkg,
+      $ver,
+      $packages->{$pkg}[1]
     );
   }
   $fh->close;
@@ -252,6 +374,8 @@ sub _write_packages_details {
 
 sub look_for {
   my ($self, $package) = @_;
+
+  return unless defined $package;
 
   my $index = $self->packages_details;
   return [] unless $index->exists;
@@ -280,8 +404,8 @@ sub authors {
   my $fh = IO::Zlib->new($index->path, "rb") or die $!;
 
   my @authors;
-  while(<$fh>) {
-    my ($id, $name, $email) = $_ =~ /^alias\s+(\S+)\s+"?(.+?)\s+(\S+?)"?\s*$/;
+  while(defined(my $line = <$fh>)) {
+    my ($id, $name, $email) = $line =~ /^alias\s+(\S+)\s+"?(.+?)\s+(\S+?)"?\s*$/;
     next unless $id;
     $email =~ tr/<>//d;
     push @authors, {pauseid => $id, name => $name, email => $email};
@@ -337,11 +461,9 @@ sub files {
 sub latest_distributions {
   my $self = shift;
 
-  require CPAN::DistnameInfo;
-  require CPAN::Version;
   my %dists;
-  for (@{ $self->files || [] }) {
-    my $dist = CPAN::DistnameInfo->new($_);
+  for my $file (@{ $self->files || [] }) {
+    my $dist = CPAN::DistnameInfo->new($file);
     my $name = $dist->dist or next;
     if (
       !exists $dists{$name}
@@ -355,7 +477,7 @@ sub latest_distributions {
 
 sub DESTROY {
   my $self = shift;
-  if ($self->{cleanup}) {
+  if ($self->{cleanup} && $$ == $self->{pid}) {
     $self->{root}->remove;
   }
 }
@@ -433,6 +555,10 @@ If set to true, WorePAN won't try to fetch files from remote sources. This is se
 
 If set to true, WorePAN also looks into the BackPAN when it fails to fetch a file from the CPAN.
 
+=item backpan
+
+a BackPAN mirror from where you'd like to fetch files.
+
 =item cleanup
 
 If set to true, WorePAN removes its contents when the instance is gone (mainly for tests).
@@ -465,6 +591,22 @@ Adds distributions to the WorePAN mirror. When you add distributions with this m
 =head2 update_indices
 
 Creates/updates mailrc and packages_details indices.
+
+=head2 walk
+
+  $worepan->walk(callback => sub {
+    my $distdir = shift;
+  
+    my $meta_yml = $distdir->file('META.yml');
+  
+    $distdir->recurse(callback => sub {
+      my $file_in_a_dist = shift;
+      return unless $file_in_a_dist =~ /\.pm$/;
+      ...
+    });
+  });
+
+Walks down the WorePAN directory and extracts each distribution into a temporary directory, and runs a callback to which a Path::Extended::Dir object for the directory is passed as an argument. Used internally to create indices.
 
 =head2 root
 
