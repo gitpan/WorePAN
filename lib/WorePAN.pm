@@ -16,7 +16,7 @@ use CPAN::Version;
 use CPAN::Meta::YAML;
 use CPAN::DistnameInfo;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 sub new {
   my ($class, %args) = @_;
@@ -208,6 +208,8 @@ sub walk {
 
 sub update_indices {
   my $self = shift;
+
+  return if $self->{no_indices};
 
   my (%authors, %packages);
   $self->walk(callback => sub {
@@ -563,11 +565,11 @@ a BackPAN mirror from where you'd like to fetch files.
 
 If set to true, WorePAN removes its contents when the instance is gone (mainly for tests).
 
-=item tar
-
-Given a path to a tar executable, L<CPAN::ParseDistribution> will use it internally; otherwise, L<Archive::Tar> will be used.
-
 =item verbose
+
+=item no_indices
+
+If set to true, WorePAN won't create/update indices.
 
 =back
 

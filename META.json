@@ -41,7 +41,7 @@
             "IO::Zlib" : 0,
             "JSON" : 0,
             "LWP::Simple" : 0,
-            "Parse::PMFile" : 0,
+            "Parse::PMFile" : "0.02",
             "Path::Extended" : 0,
             "Test::More" : "0.88",
             "Test::UseAllModules" : "0.10",
@@ -57,5 +57,5 @@
          "url" : "https://github.com/charsbar/worepan"
       }
    },
-   "version" : "0.02"
+   "version" : "0.03"
 }
