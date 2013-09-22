@@ -17,12 +17,12 @@ use CPAN::Version;
 use CPAN::Meta::YAML;
 use CPAN::DistnameInfo;
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 sub new {
   my ($class, %args) = @_;
 
-  $args{verbose} ||= $ENV{TEST_VERBOSE};
+  $args{verbose} = $ENV{TEST_VERBOSE} unless defined $args{verbose};
 
   if (!$args{root}) {
     $args{root} = File::Temp::tempdir(CLEANUP => 1, ($args{tmp} ? (DIR => $args{tmp}) : TMPDIR => 1));
