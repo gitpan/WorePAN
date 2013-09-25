@@ -18,7 +18,7 @@ use CPAN::Version;
 use CPAN::Meta::YAML;
 use CPAN::DistnameInfo;
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 sub new {
   my ($class, %args) = @_;
@@ -451,7 +451,7 @@ sub _authors_whois {
       name => $_->name,
       asciiname => $_->asciiname,
       email => $_->email,
-      website => $_->homepage,
+      homepage => $_->homepage,
     };
   }
   \@authors;
