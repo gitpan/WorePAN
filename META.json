@@ -4,7 +4,7 @@
       "Kenichi Ishigaki <ishigaki@cpan.org>"
    ],
    "dynamic_config" : 1,
-   "generated_by" : "ExtUtils::MakeMaker version 6.66, CPAN::Meta::Converter version 2.131560",
+   "generated_by" : "ExtUtils::MakeMaker version 6.76, CPAN::Meta::Converter version 2.132620",
    "license" : [
       "perl_5"
    ],
@@ -41,6 +41,7 @@
             "IO::Zlib" : "0",
             "JSON" : "0",
             "LWP::Simple" : "0",
+            "Parse::CPAN::Whois" : "0",
             "Parse::PMFile" : "0.02",
             "Path::Extended" : "0",
             "Test::More" : "0.88",
@@ -57,5 +58,5 @@
          "url" : "https://github.com/charsbar/worepan"
       }
    },
-   "version" : "0.05"
+   "version" : "0.06"
 }
