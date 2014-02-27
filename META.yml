@@ -23,12 +23,14 @@ requires:
   CPAN::DistnameInfo: 0
   CPAN::Meta::YAML: 0
   File::Temp: 0
+  Getopt::Long: 0
   IO::Zlib: 0
   JSON: 0
-  LWP::Simple: 0
+  LWP::UserAgent: 0
   Parse::CPAN::Whois: 0
   Parse::PMFile: 0.06
   Path::Extended: 0
+  Pod::Usage: 0
   Test::More: 0.88
   Test::UseAllModules: 0.10
   URI: 0
@@ -36,4 +38,4 @@ requires:
   version: 0
 resources:
   repository: https://github.com/charsbar/worepan
-version: 0.09
+version: 0.10
