@@ -38,4 +38,4 @@ requires:
   version: 0
 resources:
   repository: https://github.com/charsbar/worepan
-version: 0.10
+version: 0.11
