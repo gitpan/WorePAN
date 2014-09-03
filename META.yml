@@ -3,39 +3,38 @@ abstract: 'creates a partial CPAN mirror for tests'
 author:
   - 'Kenichi Ishigaki <ishigaki@cpan.org>'
 build_requires:
-  ExtUtils::MakeMaker: 0
+  ExtUtils::MakeMaker: '0'
+  Test::More: '0.88'
+  Test::UseAllModules: '0.10'
 configure_requires:
-  ExtUtils::MakeMaker: 0
-dynamic_config: 1
-generated_by: 'ExtUtils::MakeMaker version 6.76, CPAN::Meta::Converter version 2.132620'
+  ExtUtils::MakeMaker::CPANfile: '0.06'
+dynamic_config: 0
+generated_by: 'ExtUtils::MakeMaker version 6.98, CPAN::Meta::Converter version 2.142060'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
-  version: 1.4
+  version: '1.4'
 name: WorePAN
 no_index:
   directory:
     - t
     - inc
 requires:
-  Archive::Any::Lite: 0.06
-  Archive::Tar: 1.86
-  CPAN::DistnameInfo: 0
-  CPAN::Meta::YAML: 0
-  File::Temp: 0
-  Getopt::Long: 0
-  IO::Zlib: 0
-  JSON: 0
-  LWP::UserAgent: 0
-  Parse::CPAN::Whois: 0
-  Parse::PMFile: 0.06
-  Path::Extended: 0
-  Pod::Usage: 0
-  Test::More: 0.88
-  Test::UseAllModules: 0.10
-  URI: 0
-  URI::QueryParam: 0
-  version: 0
+  Archive::Any::Lite: '0.06'
+  Archive::Tar: '1.86'
+  CPAN::DistnameInfo: '0'
+  File::Temp: '0'
+  Getopt::Long: '0'
+  HTTP::Tiny: '0'
+  IO::Zlib: '0'
+  JSON::PP: '0'
+  Parse::CPAN::Whois: '0'
+  Parse::LocalDistribution: '0.14'
+  Parse::PMFile: '0.22'
+  Path::Extended::Tiny: '0'
+  Pod::Usage: '0'
+  URI: '0'
+  URI::QueryParam: '0'
 resources:
   repository: https://github.com/charsbar/worepan
-version: 0.11
+version: '0.12'

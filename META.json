@@ -3,8 +3,8 @@
    "author" : [
       "Kenichi Ishigaki <ishigaki@cpan.org>"
    ],
-   "dynamic_config" : 1,
-   "generated_by" : "ExtUtils::MakeMaker version 6.76, CPAN::Meta::Converter version 2.132620",
+   "dynamic_config" : 0,
+   "generated_by" : "ExtUtils::MakeMaker version 6.98, CPAN::Meta::Converter version 2.142060",
    "license" : [
       "perl_5"
    ],
@@ -22,12 +22,14 @@
    "prereqs" : {
       "build" : {
          "requires" : {
-            "ExtUtils::MakeMaker" : "0"
+            "ExtUtils::MakeMaker" : "0",
+            "Test::More" : "0.88",
+            "Test::UseAllModules" : "0.10"
          }
       },
       "configure" : {
          "requires" : {
-            "ExtUtils::MakeMaker" : "0"
+            "ExtUtils::MakeMaker::CPANfile" : "0.06"
          }
       },
       "runtime" : {
@@ -35,21 +37,18 @@
             "Archive::Any::Lite" : "0.06",
             "Archive::Tar" : "1.86",
             "CPAN::DistnameInfo" : "0",
-            "CPAN::Meta::YAML" : "0",
             "File::Temp" : "0",
             "Getopt::Long" : "0",
+            "HTTP::Tiny" : "0",
             "IO::Zlib" : "0",
-            "JSON" : "0",
-            "LWP::UserAgent" : "0",
+            "JSON::PP" : "0",
             "Parse::CPAN::Whois" : "0",
-            "Parse::PMFile" : "0.06",
-            "Path::Extended" : "0",
+            "Parse::LocalDistribution" : "0.14",
+            "Parse::PMFile" : "0.22",
+            "Path::Extended::Tiny" : "0",
             "Pod::Usage" : "0",
-            "Test::More" : "0.88",
-            "Test::UseAllModules" : "0.10",
             "URI" : "0",
-            "URI::QueryParam" : "0",
-            "version" : "0"
+            "URI::QueryParam" : "0"
          }
       }
    },
@@ -59,5 +58,5 @@
          "url" : "https://github.com/charsbar/worepan"
       }
    },
-   "version" : "0.11"
+   "version" : "0.12"
 }
